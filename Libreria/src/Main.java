@@ -179,6 +179,7 @@ public class Main {
     /**
      * Lee un entero desde consola de forma segura.
      */
+    
     private static int leerEntero(String mensaje) {
 
         while (true) {
@@ -195,4 +196,5 @@ public class Main {
             }
         }
     }
+    //prueba
 }
