@@ -1,4 +1,3 @@
-
 import java.util.ArrayList;
 import java.util.Scanner;
 
@@ -10,6 +9,9 @@ public class Main {
 
     // Lista de clientes almacenados en memoria
     private static ArrayList<Cliente> clientes = new ArrayList<>();
+
+    // Gestiona los préstamos y devoluciones de libros
+    private static GestionPrestamos gestionPrestamos = new GestionPrestamos(inventario, clientes);
 
     public static void main(String[] args) {
 
@@ -37,6 +39,14 @@ public class Main {
                     consultarClientes();
                     break;
 
+                case 5:
+                    prestarLibro();
+                    break;
+
+                case 6:
+                    devolverLibro();
+                    break;
+
                 case 0:
                     System.out.println("Saliendo del sistema...");
                     break;
@@ -54,11 +64,13 @@ public class Main {
      * Imprime las opciones del menú principal.
      */
     private static void mostrarMenu() {
-        System.out.println("\n===== MENÚ PRINCIPAL - Biblioteca LibrosYMas =====");
+        System.out.println("\n===== MENÚ PRINCIPAL - Biblioteca Libros para no leer =====");
         System.out.println("1. Registrar nuevo libro");
         System.out.println("2. Mostrar inventario de libros");
         System.out.println("3. Registrar cliente");
         System.out.println("4. Consultar clientes");
+        System.out.println("5. Prestar libro");
+        System.out.println("6. Devolver libro");
         System.out.println("0. Salir");
     }
 
@@ -151,6 +163,39 @@ public class Main {
     }
 
     /**
+     * Pide el ID del libro y el documento del cliente, y registra el préstamo.
+     */
+    private static void prestarLibro() {
+
+        System.out.println("\n--- Prestar libro ---");
+
+        System.out.print("ID del libro: ");
+        String idLibro = sc.nextLine().trim();
+
+        System.out.print("Documento del cliente: ");
+        String documentoCliente = sc.nextLine().trim();
+
+        String resultado = gestionPrestamos.prestarLibro(idLibro, documentoCliente);
+
+        System.out.println(resultado);
+    }
+
+    /**
+     * Pide el ID del libro y registra su devolución.
+     */
+    private static void devolverLibro() {
+
+        System.out.println("\n--- Devolver libro ---");
+
+        System.out.print("ID del libro: ");
+        String idLibro = sc.nextLine().trim();
+
+        String resultado = gestionPrestamos.devolverLibro(idLibro);
+
+        System.out.println(resultado);
+    }
+
+    /**
      * Muestra las categorías disponibles y devuelve la que el usuario elija.
      */
     private static Categoria seleccionarCategoria() {
@@ -198,4 +243,3 @@ public class Main {
     }
     //prueba
 }
-      
