@@ -15,6 +15,8 @@ public class Main {
 
     public static void main(String[] args) {
 
+        cargarDatos();
+
         int opcion;
 
         do {
@@ -58,6 +60,28 @@ public class Main {
         } while (opcion != 0);
 
         sc.close();
+    }
+
+    /**
+     * Lee los archivos de la carpeta "datos" y llena el inventario y la lista de clientes.
+     */
+    private static void cargarDatos() {
+        for (Libro libro : Persistencia.cargarLibros()) {
+            inventario.registrarLibro(libro);
+        }
+        clientes.addAll(Persistencia.cargarClientes());
+
+        System.out.println("Datos cargados: " + inventario.getLibros().size()
+                + " libros y " + clientes.size() + " clientes.");
+    }
+
+    /**
+     * Escribe en los archivos el estado actual de libros y clientes.
+     * Se llama despues de cada operacion que modifica datos.
+     */
+    private static void guardarDatos() {
+        Persistencia.guardarLibros(inventario.getLibros());
+        Persistencia.guardarClientes(clientes);
     }
 
     /**
@@ -110,6 +134,7 @@ public class Main {
 
         if (registrado) {
             System.out.println("Libro registrado correctamente.");
+            guardarDatos();
         }
     }
 
@@ -140,6 +165,7 @@ public class Main {
         );
 
         clientes.add(cliente);
+        guardarDatos();
 
         System.out.println("Cliente registrado correctamente.");
     }
