@@ -3,27 +3,26 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Se encarga unicamente de guardar y cargar la informacion en archivos de texto.
- * Cada objeto se guarda en UNA linea, con sus campos separados por punto y coma.
- *
- * Ejemplo de una linea en libros.txt:
  */
 public class Persistencia {
 
     private static final String CARPETA = "datos";
     private static final String ARCHIVO_LIBROS = CARPETA + "/libros.txt";
     private static final String ARCHIVO_CLIENTES = CARPETA + "/clientes.txt";
+    private static final String ARCHIVO_PRESTAMOS = CARPETA + "/prestamos.txt";
+    private static final String ARCHIVO_RESERVAS = CARPETA + "/reservas.txt";
     private static final String SEPARADOR = ";";
+    private static final String SIN_FECHA = "-";
 
+    // =====================================================
     //                        LIBROS
+    // =====================================================
 
-    /**
-     * Convierte cada libro en una linea de texto y escribe todo en libros.txt.
-     */
     public static void guardarLibros(List<Libro> libros) {
         List<String> lineas = new ArrayList<>();
 
@@ -42,16 +41,12 @@ public class Persistencia {
         escribirLineas(ARCHIVO_LIBROS, lineas);
     }
 
-    /**
-     * Lee libros.txt y reconstruye la lista de libros.
-     * Si el archivo no existe (primera vez), devuelve una lista vacia.
-     */
     public static List<Libro> cargarLibros() {
         List<Libro> libros = new ArrayList<>();
 
         for (String linea : leerLineas(ARCHIVO_LIBROS)) {
             if (linea.trim().isEmpty()) {
-                continue; // ignora lineas en blanco
+                continue;
             }
             try {
                 String[] p = linea.split(SEPARADOR, -1);
@@ -77,7 +72,9 @@ public class Persistencia {
         return libros;
     }
 
+    // =====================================================
     //                       CLIENTES
+    // =====================================================
 
     public static void guardarClientes(List<Cliente> clientes) {
         List<String> lineas = new ArrayList<>();
@@ -88,7 +85,8 @@ public class Persistencia {
                     limpiar(c.getNombre()),
                     limpiar(c.getTelefono()),
                     limpiar(c.getDireccion()),
-                    String.valueOf(c.tieneLibroPrestado()));
+                    String.valueOf(c.tieneLibroPrestado()),
+                    String.valueOf(c.getMultaPendiente()));
             lineas.add(linea);
         }
 
@@ -107,10 +105,13 @@ public class Persistencia {
 
                 Cliente cliente = new Cliente(p[0], p[1], p[2], p[3]);
 
-                // El constructor deja al cliente sin prestamo,
-                // asi que si estaba guardado con prestamo, lo restauramos.
                 if (Boolean.parseBoolean(p[4])) {
                     cliente.marcarConPrestamo();
+                }
+
+                // Archivos guardados antes de existir las multas no traen este campo: queda en 0.
+                if (p.length > 5 && !p[5].trim().isEmpty()) {
+                    cliente.setMultaPendiente(Integer.parseInt(p[5].trim()));
                 }
 
                 clientes.add(cliente);
@@ -122,7 +123,132 @@ public class Persistencia {
         return clientes;
     }
 
+    // =====================================================
+    //                      PRESTAMOS
+    // =====================================================
+
+    public static void guardarPrestamos(List<Prestamo> prestamos) {
+        List<String> lineas = new ArrayList<>();
+
+        for (Prestamo p : prestamos) {
+            String devolucion = (p.getFechaDevolucion() == null)
+                    ? SIN_FECHA : p.getFechaDevolucion().toString();
+
+            String linea = String.join(SEPARADOR,
+                    limpiar(p.getLibro().getId()),
+                    limpiar(p.getCliente().getDocumento()),
+                    p.getFechaPrestamo().toString(),
+                    p.getFechaLimite().toString(),
+                    devolucion);
+            lineas.add(linea);
+        }
+
+        escribirLineas(ARCHIVO_PRESTAMOS, lineas);
+    }
+
+    /**
+     * Reconstruye los prestamos enlazandolos con los libros y clientes ya cargados.
+     */
+    public static List<Prestamo> cargarPrestamos(InventarioLibros inventario, List<Cliente> clientes) {
+        List<Prestamo> prestamos = new ArrayList<>();
+
+        for (String linea : leerLineas(ARCHIVO_PRESTAMOS)) {
+            if (linea.trim().isEmpty()) {
+                continue;
+            }
+            try {
+                String[] p = linea.split(SEPARADOR, -1);
+
+                Libro libro = inventario.buscarPorId(p[0]);
+                Cliente cliente = buscarCliente(clientes, p[1]);
+
+                if (libro == null || cliente == null) {
+                    System.out.println("Prestamo ignorado en prestamos.txt (libro o cliente no existe): " + linea);
+                    continue;
+                }
+
+                LocalDate fechaPrestamo = LocalDate.parse(p[2]);
+                LocalDate fechaLimite = LocalDate.parse(p[3]);
+                LocalDate fechaDevolucion = p[4].equals(SIN_FECHA) ? null : LocalDate.parse(p[4]);
+
+                prestamos.add(new Prestamo(libro, cliente, fechaPrestamo, fechaLimite, fechaDevolucion));
+
+            } catch (RuntimeException e) {
+                System.out.println("Linea ignorada en prestamos.txt (formato invalido): " + linea);
+            }
+        }
+        return prestamos;
+    }
+
+    // =====================================================
+    //                       RESERVAS
+    // =====================================================
+
+    public static void guardarReservas(List<Libro> libros) {
+        List<String> lineas = new ArrayList<>();
+
+        for (Libro libro : libros) {
+            if (!libro.tieneReservas()) {
+                continue;
+            }
+            StringBuilder documentos = new StringBuilder();
+            for (Cliente c : libro.getReservas()) {
+                if (documentos.length() > 0) {
+                    documentos.append(",");
+                }
+                documentos.append(limpiar(c.getDocumento()).replace(",", ""));
+            }
+            lineas.add(limpiar(libro.getId()) + SEPARADOR + documentos);
+        }
+
+        escribirLineas(ARCHIVO_RESERVAS, lineas);
+    }
+
+    /**
+     * Restaura las listas de espera de cada libro, respetando el orden guardado.
+     */
+    public static void cargarReservas(InventarioLibros inventario, List<Cliente> clientes) {
+        for (String linea : leerLineas(ARCHIVO_RESERVAS)) {
+            if (linea.trim().isEmpty()) {
+                continue;
+            }
+            try {
+                String[] p = linea.split(SEPARADOR, -1);
+
+                Libro libro = inventario.buscarPorId(p[0]);
+                if (libro == null) {
+                    System.out.println("Reserva ignorada en reservas.txt (libro no existe): " + linea);
+                    continue;
+                }
+
+                for (String documento : p[1].split(",")) {
+                    if (documento.trim().isEmpty()) {
+                        continue;
+                    }
+                    Cliente cliente = buscarCliente(clientes, documento.trim());
+                    if (cliente != null) {
+                        libro.agregarReserva(cliente);
+                    }
+                }
+
+            } catch (RuntimeException e) {
+                System.out.println("Linea ignorada en reservas.txt (formato invalido): " + linea);
+            }
+        }
+    }
+
+    // =====================================================
     //            METODOS AUXILIARES (leer / escribir)
+    // =====================================================
+
+    private static Cliente buscarCliente(List<Cliente> clientes, String documento) {
+        for (Cliente c : clientes) {
+            if (c.getDocumento().equalsIgnoreCase(documento)) {
+                return c;
+            }
+        }
+        return null;
+    }
 
     /**
      * Escribe las lineas en el archivo, creando la carpeta "datos" si no existe.
