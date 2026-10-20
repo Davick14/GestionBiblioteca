@@ -1,0 +1,9 @@
+.git
+.gitignore
+.vscode
+datos/
+out/
+*.class
+README.md
+Dockerfile
+docker-compose.yml

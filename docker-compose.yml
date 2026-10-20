@@ -1,0 +1,8 @@
+services:
+  libreria:
+    build: .
+    image: libreria
+    stdin_open: true   # necesario porque el programa lee del teclado (Scanner)
+    tty: true
+    volumes:
+      - ./datos:/app/datos   # los .txt quedan visibles en tu carpeta del proyecto
