@@ -1,3 +1,7 @@
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
+import java.time.format.ResolverStyle;
 import java.util.ArrayList;
 import java.util.Scanner;
 
@@ -10,8 +14,12 @@ public class Main {
     // Lista de clientes almacenados en memoria
     private static ArrayList<Cliente> clientes = new ArrayList<>();
 
-    // Gestiona los préstamos y devoluciones de libros
-    private static GestionPrestamos gestionPrestamos = new GestionPrestamos(inventario, clientes);
+    // Gestiona préstamos, devoluciones, multas y reservas
+    private static GestorPrestamos gestor = new GestorPrestamos(inventario, clientes);
+
+    // Formato de fecha que se le pide al usuario (estricto: rechaza fechas imposibles como 31/02)
+    private static final DateTimeFormatter FORMATO_FECHA =
+            DateTimeFormatter.ofPattern("dd/MM/uuuu").withResolverStyle(ResolverStyle.STRICT);
 
     public static void main(String[] args) {
 
@@ -49,6 +57,26 @@ public class Main {
                     devolverLibro();
                     break;
 
+                case 7:
+                    gestor.listarPrestamosActivos();
+                    break;
+
+                case 8:
+                    consultarMultas();
+                    break;
+
+                case 9:
+                    reservarLibro();
+                    break;
+
+                case 10:
+                    consultarReservas();
+                    break;
+
+                case 11:
+                    Reporte.generar(inventario, clientes, gestor);
+                    break;
+
                 case 0:
                     System.out.println("Saliendo del sistema...");
                     break;
@@ -63,38 +91,49 @@ public class Main {
     }
 
     /**
-     * Lee los archivos de la carpeta "datos" y llena el inventario y la lista de clientes.
+     * Lee los archivos de la carpeta "datos" y llena inventario, clientes,
+     * préstamos y reservas. El orden importa: primero libros y clientes.
      */
     private static void cargarDatos() {
         for (Libro libro : Persistencia.cargarLibros()) {
             inventario.registrarLibro(libro);
         }
         clientes.addAll(Persistencia.cargarClientes());
+        gestor.getPrestamos().addAll(Persistencia.cargarPrestamos(inventario, clientes));
+        Persistencia.cargarReservas(inventario, clientes);
 
         System.out.println("Datos cargados: " + inventario.getLibros().size()
-                + " libros y " + clientes.size() + " clientes.");
+                + " libros, " + clientes.size() + " clientes y "
+                + gestor.getPrestamos().size() + " préstamos.");
     }
 
     /**
-     * Escribe en los archivos el estado actual de libros y clientes.
+     * Escribe en los archivos el estado actual de todo el sistema.
      * Se llama despues de cada operacion que modifica datos.
      */
     private static void guardarDatos() {
         Persistencia.guardarLibros(inventario.getLibros());
         Persistencia.guardarClientes(clientes);
+        Persistencia.guardarPrestamos(gestor.getPrestamos());
+        Persistencia.guardarReservas(inventario.getLibros());
     }
 
     /**
      * Imprime las opciones del menú principal.
      */
     private static void mostrarMenu() {
-        System.out.println("\n===== MENÚ PRINCIPAL - Biblioteca Libros para no leer =====");
+        System.out.println("\n===== MENÚ PRINCIPAL - Biblioteca LibrosYMas =====");
         System.out.println("1. Registrar nuevo libro");
         System.out.println("2. Mostrar inventario de libros");
         System.out.println("3. Registrar cliente");
         System.out.println("4. Consultar clientes");
         System.out.println("5. Prestar libro");
         System.out.println("6. Devolver libro");
+        System.out.println("7. Ver préstamos activos");
+        System.out.println("8. Ver multas de un cliente");
+        System.out.println("9. Reservar libro");
+        System.out.println("10. Consultar reservas de un libro");
+        System.out.println("11. Reporte general");
         System.out.println("0. Salir");
     }
 
@@ -107,6 +146,11 @@ public class Main {
 
         System.out.print("ID único del libro: ");
         String id = sc.nextLine().trim();
+
+        if (id.isEmpty()) {
+            System.out.println("El ID del libro no puede estar vacío.");
+            return;
+        }
 
         System.out.print("Título: ");
         String titulo = sc.nextLine().trim();
@@ -147,6 +191,16 @@ public class Main {
 
         System.out.print("Documento: ");
         String documento = sc.nextLine().trim();
+
+        if (documento.isEmpty()) {
+            System.out.println("El documento no puede estar vacío.");
+            return;
+        }
+
+        if (gestor.buscarCliente(documento) != null) {
+            System.out.println("Ya existe un cliente registrado con el documento: " + documento);
+            return;
+        }
 
         System.out.print("Nombre: ");
         String nombre = sc.nextLine().trim();
@@ -189,7 +243,7 @@ public class Main {
     }
 
     /**
-     * Pide el ID del libro y el documento del cliente, y registra el préstamo.
+     * Presta un libro a un cliente con la fecha de hoy.
      */
     private static void prestarLibro() {
 
@@ -199,15 +253,16 @@ public class Main {
         String idLibro = sc.nextLine().trim();
 
         System.out.print("Documento del cliente: ");
-        String documentoCliente = sc.nextLine().trim();
+        String documento = sc.nextLine().trim();
 
-        String resultado = gestionPrestamos.prestarLibro(idLibro, documentoCliente);
-
-        System.out.println(resultado);
+        if (gestor.prestarLibro(idLibro, documento, LocalDate.now())) {
+            guardarDatos();
+        }
     }
 
     /**
-     * Pide el ID del libro y registra su devolución.
+     * Registra la devolución de un libro. La fecha es opcional (Enter = hoy),
+     * lo que permite simular devoluciones tardías para probar las multas.
      */
     private static void devolverLibro() {
 
@@ -216,9 +271,55 @@ public class Main {
         System.out.print("ID del libro: ");
         String idLibro = sc.nextLine().trim();
 
-        String resultado = gestionPrestamos.devolverLibro(idLibro);
+        LocalDate fecha = leerFechaOpcional("Fecha de devolución (dd/MM/aaaa) o Enter para hoy: ");
 
-        System.out.println(resultado);
+        if (gestor.devolverLibro(idLibro, fecha)) {
+            guardarDatos();
+        }
+    }
+
+    /**
+     * Muestra las multas de un cliente específico.
+     */
+    private static void consultarMultas() {
+
+        System.out.println("\n--- Consultar multas ---");
+
+        System.out.print("Documento del cliente: ");
+        String documento = sc.nextLine().trim();
+
+        gestor.consultarMultas(documento);
+    }
+
+    /**
+     * Registra una reserva para un libro que está prestado.
+     */
+    private static void reservarLibro() {
+
+        System.out.println("\n--- Reservar libro ---");
+
+        System.out.print("ID del libro: ");
+        String idLibro = sc.nextLine().trim();
+
+        System.out.print("Documento del cliente: ");
+        String documento = sc.nextLine().trim();
+
+        if (gestor.reservarLibro(idLibro, documento)) {
+            guardarDatos();
+        }
+    }
+
+    /**
+     * Muestra la lista de espera de un libro.
+     */
+    private static void consultarReservas() {
+
+        System.out.println("\n--- Consultar reservas ---");
+
+        System.out.print("ID del libro: ");
+        String idLibro = sc.nextLine().trim();
+
+        gestor.consultarReservas(idLibro);
     }
 
     /**
@@ -250,7 +351,6 @@ public class Main {
     /**
      * Lee un entero desde consola de forma segura.
      */
-    
     private static int leerEntero(String mensaje) {
 
         while (true) {
@@ -267,5 +367,29 @@ public class Main {
             }
         }
     }
-    //prueba
+
+    /**
+     * Lee una fecha con formato dd/MM/aaaa. Si el usuario solo presiona Enter,
+     * devuelve la fecha de hoy. Repite la pregunta hasta recibir algo válido.
+     */
+    private static LocalDate leerFechaOpcional(String mensaje) {
+
+        while (true) {
+
+            System.out.print(mensaje);
+
+            String entrada = sc.nextLine().trim();
+
+            if (entrada.isEmpty()) {
+                return LocalDate.now();
+            }
+
+            try {
+                return LocalDate.parse(entrada, FORMATO_FECHA);
+
+            } catch (DateTimeParseException e) {
+                System.out.println("Fecha inválida. Use el formato dd/MM/aaaa, por ejemplo 25/12/2026.");
+            }
+        }
+    }
 }
